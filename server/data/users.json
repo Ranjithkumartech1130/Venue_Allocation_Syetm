@@ -1,0 +1,66 @@
+[
+  {
+    "_id": "1765004570410",
+    "username": "json_user_1765004570255",
+    "password": "$2b$10$NgLa9y2vHJ/IZlxabDc1Ze.iaAI6iQ7.B951kJ7xaCq2.9Q.PA.EG",
+    "email": "json_user_1765004570255@example.com",
+    "role": "user",
+    "createdAt": "2025-12-06T07:02:50.410Z"
+  },
+  {
+    "_id": "1765004621811",
+    "username": "Ranjith",
+    "password": "$2b$10$s3wLAFrrhc8nbRkQeEuUbOOhnV/.k.eILGhSk9dZ9Y7gkgyQxw5MG",
+    "email": "ranjithkumark1130@gmail.com",
+    "role": "user",
+    "createdAt": "2025-12-06T07:03:41.811Z"
+  },
+  {
+    "_id": "1765004689046",
+    "username": "admin",
+    "password": "$2b$10$ogB426hqMyGfMMdCgEZcSOkaCRExnWeKSwZLRldOww.rM2xz1nx1O",
+    "email": "admin@college.edu",
+    "role": "admin",
+    "createdAt": "2025-12-06T07:04:49.046Z"
+  },
+  {
+    "_id": "1765013326443",
+    "username": "ranjith",
+    "password": "$2b$10$bmPUmqlouQwAZ4yNgwI0J.Qvt28PyItjLE5tSRvULLechpZCjBfsS",
+    "email": "ranjithtest@example.com",
+    "role": "user",
+    "createdAt": "2025-12-06T09:28:46.443Z"
+  },
+  {
+    "_id": "1765033698949",
+    "username": "24uam139",
+    "password": "$2b$10$yGCho5JwlxC9YjysejK1U.B4TB6l/A6LVuiT98I4fLP49IvibniUe",
+    "email": "24uam139ranjithk@kgkite.ac.in",
+    "role": "user",
+    "createdAt": "2025-12-06T15:08:18.949Z"
+  },
+  {
+    "_id": "1765034483777",
+    "username": "user_1765034483685",
+    "password": "$2b$10$IIOPcvT1zEcoTgZ0ADzkV.dmxO3fmBf16riRCxtxYBr9eiW.RUU1S",
+    "email": "user_1765034483685@example.com",
+    "role": "user",
+    "createdAt": "2025-12-06T15:21:23.777Z"
+  },
+  {
+    "_id": "1765034483954",
+    "username": "admin_1765034483881",
+    "password": "$2b$10$xZvBm.Ka1adbQPhy1K57ZeWw2TGMwsdsOHEW1xlhHsqnxypmnXcqS",
+    "email": "admin_1765034483881@example.com",
+    "role": "admin",
+    "createdAt": "2025-12-06T15:21:23.954Z"
+  },
+  {
+    "_id": "1765122014119",
+    "username": "Vatsan",
+    "password": "$2b$10$yJqKJIC5FXG/ZHe68LrTo.W6s.NO/Qr/klftXYzUAoXHTYOcw0.PO",
+    "email": "mrvatsan11@gmail.com",
+    "role": "user",
+    "createdAt": "2025-12-07T15:40:14.119Z"
+  }
+]
