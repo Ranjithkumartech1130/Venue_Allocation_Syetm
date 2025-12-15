@@ -28,66 +28,124 @@ const getAdminEmail = (level) => {
 };
 
 exports.sendApprovalRequest = async (booking, venueName, level) => {
-    const approvalLink = `http://127.0.0.1:5000/api/bookings/verify/${booking._id}`;
-    const rejectionLink = `http://127.0.0.1:5000/api/bookings/reject/${booking._id}`;
+
     const recipientEmail = getAdminEmail(level);
 
     // Customize subject/body based on level?
-    const roleName = level === 1 ? 'HOD' : `Level ${level} Admin`;
+    const bookings = Array.isArray(booking) ? booking : [booking];
 
-    // If no real credentials, we just simulate
+    // Safety check if bookings array is empty
+    if (bookings.length === 0) return;
+
+    const firstBooking = bookings[0]; // Use first booking for shared details like Time/Purpose/User
+    // Assuming User and Venue models are accessible or passed
+    // For this example, I'll mock them or assume they are imported
+    // const User = require('../models/User'); // Example import
+    // const Venue = require('../models/Venue'); // Example import
+    const JsonDB = require('./jsonDb');
+    const User = new JsonDB('users');
+    const Venue = new JsonDB('venues');
+
+    const user = User.findById(firstBooking.user);
+
+    // Venues list for subject
+    let subject = '';
+    if (bookings.length === 1) {
+        subject = `Approval Request (Level ${level}): ${venueName || 'Unknown Venue'}`;
+    } else {
+        subject = `Approval Request (Level ${level}): ${bookings.length} Venues`;
+    }
+
     if (!process.env.EMAIL_USER) {
-        console.log(`--- EMAIL SIMULATION (Level ${level} Approval) ---`);
-        console.log(`To: ${recipientEmail} (${roleName})`);
-        console.log(`Subject: Action Required: Level ${level} Venue Booking Approval`);
-        console.log(`Body: A new booking for ${venueName} requires your approval.`);
-        console.log(`Approve: ${approvalLink}`);
-        console.log(`Reject: ${rejectionLink}`);
-        console.log(`Attachment: ${booking.reasoningFileName}`);
-        console.log('------------------------');
+        console.log(`--- SIMULATED EMAIL TO LEVEL ${level} ADMIN ---`);
+        console.log(`To: ${recipientEmail}`);
+        console.log(`Subject: ${subject}`);
+        console.log(`Venues: ${bookings.length}`);
         return;
+    }
+
+    // Generate HTML for Venues List
+    let venuesHtml = '';
+    if (bookings.length === 1) {
+        const b = bookings[0];
+        // Fetch venue name if not passed
+        const vName = venueName || Venue.findById(b.venue)?.name;
+        // Single venue layout (similar to old one but simplified)
+        venuesHtml = `
+            <p><strong>Venue:</strong> ${vName}</p>
+            <div style="margin-top: 20px;">
+                <a href="http://localhost:5000/api/bookings/verify/${b._id}" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin-right: 10px;">Approve</a>
+                <a href="http://localhost:5000/api/bookings/reject/${b._id}" style="background-color: #f44336; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reject</a>
+            </div>
+        `;
+    } else {
+        // Table for multiple venues
+        venuesHtml = `
+            <h3>Requested Venues:</h3>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                <thead>
+                    <tr style="background-color: #f2f2f2;">
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Venue</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: center;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${bookings.map(b => {
+            const vName = Venue.findById(b.venue)?.name || 'Unknown';
+            return `
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;">${vName}</td>
+                            <td style="padding: 10px; border: 1px solid #ddd; text-align: center;">
+                                <a href="http://localhost:5000/api/bookings/verify/${b._id}" style="color: #4CAF50; font-weight: bold; margin-right: 15px; text-decoration: none;">Approve</a>
+                                <a href="http://localhost:5000/api/bookings/reject/${b._id}" style="color: #f44336; font-weight: bold; text-decoration: none;">Reject</a>
+                            </td>
+                        </tr>
+                        `;
+        }).join('')}
+                </tbody>
+            </table>
+        `;
     }
 
     const mailOptions = {
         from: process.env.EMAIL_USER,
         to: recipientEmail,
-        subject: `Action Required: Level ${level} Venue Booking Approval`,
+        subject: subject,
         html: `
-            <h3>New Booking Request - Level ${level} Approval</h3>
-            <p><strong>Venue:</strong> ${venueName}</p>
-            <p><strong>Date/Time:</strong> ${new Date(booking.startTime).toLocaleString()} - ${new Date(booking.endTime).toLocaleString()}</p>
-            <p><strong>Purpose:</strong> ${booking.purpose}</p>
-            <p><strong>Reasoning Document:</strong> Attached (${booking.reasoningFileName})</p>
-            <br/>
-            <p>Please review the attached document and approve or reject this booking.</p>
-            <a href="${approvalLink}" style="padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px; margin-right: 10px;">Approve Booking</a>
-            <a href="${rejectionLink}" style="padding: 10px 20px; background-color: #f44336; color: white; text-decoration: none; border-radius: 5px;">Reject Booking</a>
-            <br/><br/>
-            <p>This is level ${level} of 4 in the approval process.</p>
+            <h2>Booking Approval Request (Level ${level})</h2>
+            <p><strong>User:</strong> ${user ? user.username : 'Unknown'}</p>
+            <p><strong>Email:</strong> ${user ? user.email : 'Unknown'}</p>
+            <p><strong>Purpose:</strong> ${firstBooking.purpose}</p>
+            <p><strong>Time:</strong> ${new Date(firstBooking.startTime).toLocaleString()} - ${new Date(firstBooking.endTime).toLocaleString()}</p>
+            
+            ${venuesHtml}
+
+            <p>Please review the attached reasoning document.</p>
         `,
         attachments: [
             {
-                filename: booking.reasoningFileName || 'reasoning-document.pdf',
-                path: booking.reasoningFile // Ensure this path is correct from booking object
+                filename: firstBooking.reasoningFileName,
+                path: firstBooking.reasoningFile
             }
         ]
     };
 
     try {
         await transporter.sendMail(mailOptions);
-        console.log(`Verification email sent to ${roleName} (${recipientEmail}).`);
+        console.log(`Approval request sent to Level ${level} Admin (${recipientEmail}).`);
     } catch (error) {
-        console.error('Error sending email:', error);
+        console.error('Error sending approval email:', error);
     }
 };
 
-exports.sendRejectionNotification = async (userEmail, booking, venueName) => {
+exports.sendRejectionNotification = async (userEmail, booking, venueName, reason) => {
     // Logic to send rejection email to student
     if (!process.env.EMAIL_USER) {
         console.log(`--- SIMULATED STUDENT EMAIL ---`);
         console.log(`To: ${userEmail}`);
         console.log('Subject: Booking Rejected');
         console.log(`Your booking for ${venueName} has been rejected.`);
+        console.log(`Reason: ${reason}`);
         return;
     }
 
@@ -99,6 +157,12 @@ exports.sendRejectionNotification = async (userEmail, booking, venueName) => {
             <h3>Booking Rejected</h3>
             <p>Your booking for <strong>${venueName}</strong> has been rejected by the administrator.</p>
             <p><strong>Date:</strong> ${new Date(booking.startTime).toLocaleString()}</p>
+            
+            <div style="background-color: #ffebee; padding: 15px; border-left: 5px solid #f44336; margin: 15px 0;">
+                <p style="margin: 0; font-weight: bold; color: #b71c1c;">Reason for Rejection:</p>
+                <p style="margin: 5px 0 0 0;">${reason || 'No reason provided.'}</p>
+            </div>
+
             <p>Please contact the department for more details or try a different time.</p>
         `
     };
@@ -137,5 +201,37 @@ exports.sendApprovalNotification = async (userEmail, booking, venueName) => {
         console.log(`Approval notification sent to user (${userEmail}).`);
     } catch (error) {
         console.error('Error sending approval notification:', error);
+    }
+};
+
+exports.sendVerificationEmail = async (booking, venueName) => {
+    console.log(`--- SYSTEM TEST EMAIL ---`);
+    console.log(`To: Configured Admin`);
+    console.log(`Subject: System Test - ${venueName}`);
+    console.log(`Purpose: ${booking.purpose}`);
+
+    if (!process.env.EMAIL_USER) {
+        return;
+    }
+
+    const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: process.env.EMAIL_USER, // Send to self for test
+        subject: `System Test: ${venueName}`,
+        html: `
+            <h3>System Connectivity Test</h3>
+            <p><strong>Venue:</strong> ${venueName}</p>
+            <p><strong>Purpose:</strong> ${booking.purpose}</p>
+            <p><strong>Time:</strong> ${booking.startTime.toString()}</p>
+            <p>System email functionality is working.</p>
+        `
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+        console.log('Test email sent successfully.');
+    } catch (error) {
+        console.error('Error sending test email:', error);
+        throw error;
     }
 };

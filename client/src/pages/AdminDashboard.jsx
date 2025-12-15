@@ -200,6 +200,11 @@ const AdminDashboard = () => {
 
             {activeTab === 'bookings' && (
                 <div style={{ overflowX: 'auto' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+                        <a href="http://localhost:5000/api/bookings/download" target="_blank" rel="noopener noreferrer" className="btn btn-success" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span>Download CSV</span>
+                        </a>
+                    </div>
                     <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: 'var(--radius)', overflow: 'hidden', boxShadow: 'var(--shadow)' }}>
                         <thead style={{ background: '#f1f5f9' }}>
                             <tr>

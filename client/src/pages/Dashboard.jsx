@@ -31,7 +31,7 @@ const Dashboard = () => {
             ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '2rem' }}>
                     {venues.map(venue => (
-                        <VenueCard key={venue._id} venue={venue} refreshBookings={fetchVenues} />
+                        <VenueCard key={venue._id} venue={venue} availableVenues={venues} refreshBookings={fetchVenues} />
                     ))}
                 </div>
             )}

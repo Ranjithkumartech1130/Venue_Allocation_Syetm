@@ -10,7 +10,9 @@ router.delete('/:id', verifyToken, bookingController.deleteBooking);
 router.get('/venue/:venueId', verifyToken, bookingController.getVenueBookings);
 
 // Verification route
+router.get('/download', bookingController.downloadBookings);
 router.get('/verify/:id', bookingController.verifyBooking);
 router.get('/reject/:id', bookingController.rejectBooking);
+router.post('/reject/:id', bookingController.processRejection);
 
 module.exports = router;

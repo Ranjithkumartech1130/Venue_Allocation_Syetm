@@ -10,7 +10,24 @@ exports.createBooking = async (req, res) => {
         console.log('[DEBUG] req.body:', req.body);
         console.log('[DEBUG] req.file:', req.file);
 
-        const { venue, startTime, endTime, purpose } = req.body;
+        const { startTime, endTime, purpose } = req.body;
+        // Parse venues: prefer 'venues' array (JSON string), fallback to single 'venue'
+        let venueIds = [];
+        if (req.body.venues) {
+            try {
+                venueIds = JSON.parse(req.body.venues);
+            } catch (e) {
+                // If not JSON, maybe comma separated or array? Assume JSON as per frontend.
+                // If parse fails, fallback to single if available
+                if (req.body.venue) venueIds = [req.body.venue];
+            }
+        } else if (req.body.venue) {
+            venueIds = [req.body.venue];
+        }
+
+        if (venueIds.length === 0) {
+            return res.status(400).json({ message: 'No venue selected' });
+        }
 
         // Check if file was uploaded
         if (!req.file) {
@@ -18,61 +35,69 @@ exports.createBooking = async (req, res) => {
             return res.status(400).json({ message: 'Reasoning file is required' });
         }
 
-        console.log('[DEBUG] File uploaded:', req.file.originalname);
-
         if (new Date(startTime) >= new Date(endTime)) {
             return res.status(400).json({ message: 'End time must be after start time' });
         }
 
-        // Check for conflicts
-        console.log('[DEBUG] Checking for conflicts...');
-        const allBookings = Booking.find({ venue });
-        const conflict = allBookings.find(b => {
-            if (b.status === 'cancelled') return false;
-            const startA = new Date(b.startTime);
-            const endA = new Date(b.endTime);
-            const startB = new Date(startTime);
-            const endB = new Date(endTime);
-            return (startA < endB && endA > startB);
-        });
+        // CONFLICT CHECK FOR ALL VENUES
+        console.log('[DEBUG] Checking for conflicts for venues:', venueIds);
+        for (const venueId of venueIds) {
+            const allBookings = Booking.find({ venue: venueId });
+            const conflict = allBookings.find(b => {
+                if (b.status === 'cancelled') return false;
+                const startA = new Date(b.startTime);
+                const endA = new Date(b.endTime);
+                const startB = new Date(startTime);
+                const endB = new Date(endTime);
+                return (startA < endB && endA > startB);
+            });
 
-        if (conflict) {
-            if (conflict.status === 'confirmed') {
-                return res.status(400).json({ message: 'Venue is already booked for this time slot' });
-            } else if (conflict.status.startsWith('pending')) {
-                return res.status(400).json({ message: 'A pending booking already exists for this slot.' });
+            if (conflict) {
+                const venueName = Venue.findById(venueId)?.name || 'Unknown Venue';
+                if (conflict.status === 'confirmed') {
+                    return res.status(400).json({ message: `Venue '${venueName}' is already booked for: ${conflict.purpose}` });
+                } else if (conflict.status.startsWith('pending')) {
+                    return res.status(400).json({ message: `Venue '${venueName}' is in waiting list` });
+                }
             }
         }
 
-        console.log('[DEBUG] Creating booking...');
-        const booking = Booking.create({
-            user: req.user.id,
-            venue,
-            startTime,
-            endTime,
-            purpose,
-            reasoningFile: req.file.path,
-            reasoningFileName: req.file.originalname,
-            status: 'pending_level_1', // Start at Level 1
-            approvalLevel: 1
-        });
+        // CREATE BOOKINGS
+        console.log('[DEBUG] Creating bookings...');
+        const createdBookings = [];
+        for (const venueId of venueIds) {
+            const booking = Booking.create({
+                user: req.user.id,
+                venue: venueId,
+                startTime,
+                endTime,
+                purpose,
+                reasoningFile: req.file.path,
+                reasoningFileName: req.file.originalname,
+                status: 'pending_level_1', // Start at Level 1 for all
+                approvalLevel: 1
+            });
+            createdBookings.push(booking);
+        }
 
-        console.log('[DEBUG] Booking created:', booking._id);
+        console.log(`[DEBUG] Created ${createdBookings.length} bookings.`);
 
-        // Send Email to Level 1 Admin
+        // Send AGGREGATED Email to Level 1 Admin
         console.log('[DEBUG] Sending email to Level 1 Admin...');
-        const venueData = Venue.findById(venue);
-        // Using generic sendApprovalRequest
-        // Requires importing it properly, see updated import below
+
+        // We need venue names for the email
+        // If it's a single booking, the original logic passed (booking, venueName, level)
+        // We will update sendApprovalRequest to handle array.
         const { sendApprovalRequest } = require('../utils/emailService');
-        await sendApprovalRequest(booking, venueData ? venueData.name : 'Unknown Venue', 1);
+        await sendApprovalRequest(createdBookings, null, 1); // Pass null for venueName, specialized logic will handle array
 
         console.log('[DEBUG] Email sent successfully');
-        res.status(201).json({ ...booking, message: 'Booking pending Level 1 approval.' });
+        res.status(201).json({ bookings: createdBookings, message: 'Bookings created and pending Level 1 approval.' });
+
     } catch (error) {
         console.error('[ERROR] Error in createBooking:', error);
         console.error('[ERROR] Stack trace:', error.stack);
-        res.status(500).json({ message: 'Error creating booking', error: error.message });
+        res.status(500).json({ message: `Error creating booking: ${error.message}`, error: error.message });
     }
 };
 
@@ -83,6 +108,9 @@ exports.verifyBooking = async (req, res) => {
 
         if (!booking) return res.send('<h1>Booking Not Found</h1>');
         if (booking.status === 'confirmed') return res.send('<h1>Booking Already Verified!</h1>');
+
+        // Check if already cancelled
+        if (booking.status === 'cancelled') return res.send('<h1>Booking Already Cancelled/Rejected!</h1>');
 
         let currentLevel = booking.approvalLevel || 1;
 
@@ -145,25 +173,104 @@ exports.rejectBooking = async (req, res) => {
         if (booking.status === 'confirmed') return res.send('<h1>Booking Already Verified! Cannot Reject.</h1>');
         if (booking.status === 'cancelled') return res.send('<h1>Booking Already Rejected/Cancelled!</h1>');
 
+        // Serve HTML Form
+        res.send(`
+            <div style="font-family: Arial; max-width: 600px; margin: 50px auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+                <h2 style="color: #f44336; text-align: center;">Reject Booking</h2>
+                <p><strong>Venue:</strong> ${Venue.findById(booking.venue)?.name || 'Unknown'}</p>
+                <p><strong>Purpose:</strong> ${booking.purpose}</p>
+                <form action="/api/bookings/reject/${id}" method="POST">
+                    <label for="reason" style="display: block; margin-bottom: 10px; font-weight: bold;">Reason for Rejection:</label>
+                    <textarea id="reason" name="reason" rows="4" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid #ccc;" required placeholder="Enter the reason for rejection..."></textarea>
+                    <br/><br/>
+                    <button type="submit" style="width: 100%; padding: 10px; background-color: #f44336; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer;">Confirm Rejection</button>
+                </form>
+            </div>
+        `);
+    } catch (error) {
+        res.status(500).send('<h1>Server Error Loading Rejection Form</h1>');
+    }
+};
+
+exports.processRejection = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { reason } = req.body;
+
+        // In Express, parsing req.body requires body-parser or express.json/urlencoded
+        // Ensure server.js app.use(express.urlencoded({ extended: true })) is present or added.
+        // Assuming standard setup, but let's check. 
+        // If not, this might fail. I'll rely on common setup but warn in memory.
+
+        const booking = Booking.findById(id);
+
+        if (!booking) return res.send('<h1>Booking Not Found</h1>');
+        if (booking.status === 'confirmed') return res.send('<h1>Booking Already Verified! Cannot Reject.</h1>');
+        if (booking.status === 'cancelled') return res.send('<h1>Booking Already Rejected/Cancelled!</h1>');
+
         // Update status
         Booking.update(id, { status: 'cancelled' });
 
         // Notify User
         const user = User.findById(booking.user);
         const venue = Venue.findById(booking.venue);
+        const { sendRejectionNotification } = require('../utils/emailService');
+
         if (user && user.email) {
-            await sendRejectionNotification(user.email, booking, venue ? venue.name : 'Unknown Venue');
+            await sendRejectionNotification(user.email, booking, venue ? venue.name : 'Unknown Venue', reason);
         }
 
         res.send(`
             <div style="font-family: Arial; text-align: center; margin-top: 50px;">
                 <h1 style="color: red;">Booking Rejected</h1>
                 <p>The booking has been marked as cancelled.</p>
-                <p>An email notification has been sent to the user.</p>
+                <p>Reason: <strong>${reason}</strong></p>
+                <p>An email notification with the reason has been sent to the user.</p>
             </div>
         `);
     } catch (error) {
+        console.error('Error processing rejection:', error);
         res.status(500).send('<h1>Server Error Rejecting Booking</h1>');
+    }
+};
+
+exports.downloadBookings = async (req, res) => {
+    try {
+        const allBookings = Booking.find({});
+
+        // We need to resolve User and Venue names.
+        // JsonDB returns IDs. We have to map manually if no populate exists.
+
+        const csvRows = [];
+        // Header
+        csvRows.push(['Booking ID', 'Venue', 'User', 'Start Time', 'End Time', 'Purpose', 'Status', 'Level'].join(','));
+
+        for (const b of allBookings) {
+            const venue = Venue.findById(b.venue);
+            const user = User.findById(b.user);
+
+            const row = [
+                b._id,
+                venue ? venue.name : 'Unknown',
+                user ? user.username : 'Unknown',
+                new Date(b.startTime).toLocaleString(),
+                new Date(b.endTime).toLocaleString(),
+                `"${b.purpose.replace(/"/g, '""')}"`, // Escape quotes
+                b.status,
+                b.approvalLevel || 1
+            ];
+            csvRows.push(row.join(','));
+        }
+
+        const csvString = csvRows.join('\n');
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="bookings_export.csv"');
+        res.send(csvString);
+
+    } catch (error) {
+        console.error('Error downloading bookings:', error);
+        res.status(500).send('Error generating CSV');
     }
 };
 

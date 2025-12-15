@@ -62,5 +62,21 @@
     "email": "mrvatsan11@gmail.com",
     "role": "user",
     "createdAt": "2025-12-07T15:40:14.119Z"
+  },
+  {
+    "_id": "1765348663764",
+    "username": "user_1765348663604",
+    "password": "$2b$10$GGOFdyJOcbBOsVg9JgGU/.7ILnu9PqGNU7NDp.WgzLVR8Djv6c0Ku",
+    "email": "user_1765348663604@example.com",
+    "role": "user",
+    "createdAt": "2025-12-10T06:37:43.764Z"
+  },
+  {
+    "_id": "1765348663922",
+    "username": "admin_1765348663848",
+    "password": "$2b$10$3xSpr/rCF1d29w2DBYfIbuxTY4P5tretMqyKOWNkUGp6bTv2IqrKe",
+    "email": "admin_1765348663848@example.com",
+    "role": "admin",
+    "createdAt": "2025-12-10T06:37:43.922Z"
   }
 ]

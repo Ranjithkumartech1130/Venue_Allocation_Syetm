@@ -1,0 +1,3 @@
+SUCCESS: Email function executed without error.
+User: json_user_1765004570255
+Venue: Main Auditorium

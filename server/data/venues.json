@@ -91,5 +91,28 @@
       "mic": false,
       "projector": true
     }
+  },
+  {
+    "_id": "1765346400433",
+    "name": "Library",
+    "capacity": "100",
+    "description": "You can read books here",
+    "image": "",
+    "facilities": {
+      "ac": false,
+      "mic": false,
+      "projector": false
+    },
+    "createdAt": "2025-12-10T06:00:00.433Z"
+  },
+  {
+    "_id": "1765348663999",
+    "name": "Venue 1765348663994",
+    "capacity": 100,
+    "description": "Test Venue",
+    "facilities": {
+      "ac": true
+    },
+    "createdAt": "2025-12-10T06:37:43.999Z"
   }
 ]

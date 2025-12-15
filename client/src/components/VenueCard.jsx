@@ -1,22 +1,11 @@
 import React, { useState } from 'react';
 import BookingModal from './BookingModal';
 
-const VenueCard = ({ venue, refreshBookings }) => {
+const VenueCard = ({ venue, availableVenues, refreshBookings }) => {
     const [showModal, setShowModal] = useState(false);
-
-    // We could show current status here if we had it, but for now just basic info.
-    // "Status (Booked/Free)" depends on the current time vs bookings.
-    // Since we don't have real-time status from API in the venue object yet (left it simple),
-    // we can just show the venue.
-    // Enhancment: Fetch bookings for today for this venue to determine status?
-    // User asked: "Status (Booked / Free)".
-    // I will assume "Free" unless I see it is booked right now.
-    // For now, let's keep it static or rely on user check.
-    // Actually, let's just allow booking attempts.
 
     return (
         <div className="card">
-            {/* Placeholder image or actual image */}
             <div style={{ height: '200px', background: '#e2e8f0', borderRadius: '0.5rem', marginBottom: '1rem', overflow: 'hidden' }}>
                 {venue.image ? (
                     <img src={venue.image} alt={venue.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -47,9 +36,10 @@ const VenueCard = ({ venue, refreshBookings }) => {
             {showModal && (
                 <BookingModal
                     venue={venue}
+                    availableVenues={availableVenues}
                     onClose={() => setShowModal(false)}
                     onSuccess={() => {
-                        refreshBookings(); // Trigger parent refresh if needed or just alert
+                        refreshBookings();
                         alert('Booking Request Sent!');
                     }}
                 />
