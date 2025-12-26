@@ -118,29 +118,73 @@ exports.verifyBooking = async (req, res) => {
             // Move to next level
             const nextLevel = currentLevel + 1;
 
+            // Update ONLY this booking to next level (independent approval)
             Booking.update(id, {
                 status: `pending_level_${nextLevel}`,
                 approvalLevel: nextLevel
             });
 
-            // Convert to updated object for email (JsonDB update returns updated obj or we just use ID)
-            // We'll trust the update and re-fetch or modify local obj
-            booking.status = `pending_level_${nextLevel}`;
-            booking.approvalLevel = nextLevel;
+            console.log(`[DEBUG] Approved booking ${id} to Level ${nextLevel}`);
 
+            // Find ALL bookings from the same user/time/purpose
+            const allBookings = Booking.find({});
+            const relatedBookings = allBookings.filter(b =>
+                b.user === booking.user &&
+                b.startTime === booking.startTime &&
+                b.endTime === booking.endTime &&
+                b.purpose === booking.purpose
+            );
+
+            // Check if there are any bookings still pending at the CURRENT level
+            const stillPendingAtCurrentLevel = relatedBookings.filter(b =>
+                b.status === `pending_level_${currentLevel}`
+            );
+
+            console.log(`[DEBUG] ${stillPendingAtCurrentLevel.length} bookings still pending at Level ${currentLevel}`);
+
+            // Find bookings at next level
+            const nextLevelBookings = relatedBookings.filter(b =>
+                b.status === `pending_level_${nextLevel}`
+            );
+
+            // Find rejected bookings for context
+            const rejectedBookings = relatedBookings.filter(b =>
+                b.status === 'cancelled'
+            );
+
+            // ONLY send email if ALL venues at current level have been processed
+            if (stillPendingAtCurrentLevel.length === 0 && nextLevelBookings.length > 0) {
+                // All venues processed at current level, send email to next level
+                const allBookingsForEmail = [...nextLevelBookings, ...rejectedBookings];
+
+                console.log(`[DEBUG] All venues processed at Level ${currentLevel}. Sending email to Level ${nextLevel}`);
+                console.log(`[DEBUG] Email will include: ${nextLevelBookings.length} pending, ${rejectedBookings.length} rejected`);
+
+                const { sendApprovalRequest } = require('../utils/emailService');
+                await sendApprovalRequest(allBookingsForEmail, null, nextLevel);
+            } else {
+                console.log(`[DEBUG] NOT sending email yet - ${stillPendingAtCurrentLevel.length} venue(s) still pending at Level ${currentLevel}`);
+            }
+
+            const venueCount = nextLevelBookings.length;
             const venue = Venue.findById(booking.venue);
-            const { sendApprovalRequest } = require('../utils/emailService');
-            await sendApprovalRequest(booking, venue ? venue.name : 'Unknown Venue', nextLevel);
-
             res.send(`
                 <div style="font-family: Arial; text-align: center; margin-top: 50px;">
                     <h1 style="color: green;">Level ${currentLevel} Approved!</h1>
-                    <p>Booking has been forwarded to Level ${nextLevel} Admin for approval.</p>
+                    <p><strong>${venue ? venue.name : 'Venue'}</strong> has been approved at Level ${currentLevel}.</p>
+                    ${stillPendingAtCurrentLevel.length > 0
+                    ? `<p style="color: #ff9800; font-size: 14px;">⏳ ${stillPendingAtCurrentLevel.length} venue${stillPendingAtCurrentLevel.length > 1 ? 's' : ''} still pending approval at this level</p>`
+                    : `<p style="color: #4CAF50; font-size: 14px;">✅ All venues processed! Email sent to Level ${nextLevel} Admin</p>`
+                }
+                    ${nextLevelBookings.length > 0 ? `<p style="color: #666; font-size: 14px;">(${nextLevelBookings.length} venue${nextLevelBookings.length > 1 ? 's' : ''} forwarded to Level ${nextLevel})</p>` : ''}
+                    ${rejectedBookings.length > 0 ? `<p style="color: #f44336; font-size: 14px;">(${rejectedBookings.length} venue${rejectedBookings.length > 1 ? 's were' : ' was'} rejected)</p>` : ''}
                 </div>
              `);
         } else {
             // Final Approval (Level 4 -> Confirmed)
             Booking.update(id, { status: 'confirmed' });
+
+            console.log(`[DEBUG] Final approval for booking ${id}`);
 
             // Notify User
             const user = User.findById(booking.user);
@@ -154,7 +198,7 @@ exports.verifyBooking = async (req, res) => {
             res.send(`
                 <div style="font-family: Arial; text-align: center; margin-top: 50px;">
                     <h1 style="color: green;">Final Approval Successful!</h1>
-                    <p>The venue has been fully confirmed for the user.</p>
+                    <p><strong>${venue ? venue.name : 'The venue'}</strong> has been fully confirmed for the user.</p>
                 </div>
             `);
         }
@@ -208,22 +252,30 @@ exports.processRejection = async (req, res) => {
         if (booking.status === 'confirmed') return res.send('<h1>Booking Already Verified! Cannot Reject.</h1>');
         if (booking.status === 'cancelled') return res.send('<h1>Booking Already Rejected/Cancelled!</h1>');
 
-        // Update status
-        Booking.update(id, { status: 'cancelled' });
+        // Update ONLY this booking to cancelled (independent rejection)
+        // Store the rejection reason for display in emails
+        Booking.update(id, {
+            status: 'cancelled',
+            rejectionReason: reason,
+            rejectedAt: new Date()
+        });
 
-        // Notify User
+        console.log(`[DEBUG] Rejected booking ${id}`);
+
+        // Notify User about this specific venue
         const user = User.findById(booking.user);
         const venue = Venue.findById(booking.venue);
         const { sendRejectionNotification } = require('../utils/emailService');
 
         if (user && user.email) {
-            await sendRejectionNotification(user.email, booking, venue ? venue.name : 'Unknown Venue', reason);
+            const rejectionLevel = booking.approvalLevel || 1;
+            await sendRejectionNotification(user.email, booking, venue ? venue.name : 'Unknown Venue', reason, rejectionLevel);
         }
 
         res.send(`
             <div style="font-family: Arial; text-align: center; margin-top: 50px;">
                 <h1 style="color: red;">Booking Rejected</h1>
-                <p>The booking has been marked as cancelled.</p>
+                <p><strong>${venue ? venue.name : 'The venue'}</strong> has been marked as cancelled.</p>
                 <p>Reason: <strong>${reason}</strong></p>
                 <p>An email notification with the reason has been sent to the user.</p>
             </div>

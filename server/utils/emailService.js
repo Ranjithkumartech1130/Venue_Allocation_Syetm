@@ -5,16 +5,27 @@ if (!process.env.EMAIL_USER) {
 
 console.log('Email Service Initialized. User:', process.env.EMAIL_USER);
 
-// Create a transporter
+// Create a transporter with enhanced configuration
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false, // true for 465, false for other ports
     auth: {
         user: process.env.EMAIL_USER || 'test@example.com',
         pass: process.env.EMAIL_PASS || 'password'
     },
     tls: {
-        rejectUnauthorized: false
-    }
+        rejectUnauthorized: false,
+        ciphers: 'SSLv3'
+    },
+    pool: true, // Use connection pooling
+    maxConnections: 5,
+    maxMessages: 10,
+    rateDelta: 1000, // 1 second between messages
+    rateLimit: 5, // Max 5 messages per rateDelta
+    connectionTimeout: 60000, // 60 seconds
+    greetingTimeout: 30000, // 30 seconds
+    socketTimeout: 60000 // 60 seconds
 });
 
 const getAdminEmail = (level) => {
@@ -79,28 +90,56 @@ exports.sendApprovalRequest = async (booking, venueName, level) => {
             </div>
         `;
     } else {
-        // Table for multiple venues
+        // Table for multiple venues - show both approved and rejected
         venuesHtml = `
             <h3>Requested Venues:</h3>
             <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
                 <thead>
                     <tr style="background-color: #f2f2f2;">
                         <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Venue</th>
+                        <th style="padding: 10px; border: 1px solid #ddd; text-align: center;">Status</th>
                         <th style="padding: 10px; border: 1px solid #ddd; text-align: center;">Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${bookings.map(b => {
             const vName = Venue.findById(b.venue)?.name || 'Unknown';
-            return `
-                        <tr>
+
+            // Check if this venue was rejected
+            if (b.status === 'cancelled' && b.rejectionReason) {
+                return `
+                        <tr style="background-color: #ffebee;">
+                            <td style="padding: 10px; border: 1px solid #ddd; color: #c62828; font-weight: bold;">${vName}</td>
+                            <td style="padding: 10px; border: 1px solid #ddd; text-align: center;">
+                                <div style="background-color: #f44336; color: white; padding: 5px 10px; border-radius: 3px; display: inline-block; font-size: 12px;">
+                                    REJECTED
+                                </div>
+                                <div style="margin-top: 5px; font-size: 12px; color: #666;">
+                                    <strong>Reason:</strong> ${b.rejectionReason}
+                                </div>
+                            </td>
+                            <td style="padding: 10px; border: 1px solid #ddd; text-align: center; color: #999;">
+                                Already Rejected
+                            </td>
+                        </tr>
+                        `;
+            } else {
+                // Approved or pending venue
+                return `
+                        <tr style="background-color: #e8f5e9;">
                             <td style="padding: 10px; border: 1px solid #ddd;">${vName}</td>
+                            <td style="padding: 10px; border: 1px solid #ddd; text-align: center;">
+                                <div style="background-color: #4CAF50; color: white; padding: 5px 10px; border-radius: 3px; display: inline-block; font-size: 12px;">
+                                    PENDING APPROVAL
+                                </div>
+                            </td>
                             <td style="padding: 10px; border: 1px solid #ddd; text-align: center;">
                                 <a href="http://localhost:5000/api/bookings/verify/${b._id}" style="color: #4CAF50; font-weight: bold; margin-right: 15px; text-decoration: none;">Approve</a>
                                 <a href="http://localhost:5000/api/bookings/reject/${b._id}" style="color: #f44336; font-weight: bold; text-decoration: none;">Reject</a>
                             </td>
                         </tr>
                         `;
+            }
         }).join('')}
                 </tbody>
             </table>
@@ -138,13 +177,14 @@ exports.sendApprovalRequest = async (booking, venueName, level) => {
     }
 };
 
-exports.sendRejectionNotification = async (userEmail, booking, venueName, reason) => {
+exports.sendRejectionNotification = async (userEmail, booking, venueName, reason, rejectionLevel = 1) => {
     // Logic to send rejection email to student
     if (!process.env.EMAIL_USER) {
         console.log(`--- SIMULATED STUDENT EMAIL ---`);
         console.log(`To: ${userEmail}`);
         console.log('Subject: Booking Rejected');
         console.log(`Your booking for ${venueName} has been rejected.`);
+        console.log(`Rejected by: Level ${rejectionLevel} Admin`);
         console.log(`Reason: ${reason}`);
         return;
     }
@@ -154,16 +194,22 @@ exports.sendRejectionNotification = async (userEmail, booking, venueName, reason
         to: userEmail,
         subject: 'Booking Rejected: ' + venueName,
         html: `
-            <h3>Booking Rejected</h3>
-            <p>Your booking for <strong>${venueName}</strong> has been rejected by the administrator.</p>
+            <h3 style="color: #f44336;">Booking Rejected</h3>
+            <p>Your booking for <strong>${venueName}</strong> has been rejected.</p>
             <p><strong>Date:</strong> ${new Date(booking.startTime).toLocaleString()}</p>
+            <p><strong>Purpose:</strong> ${booking.purpose}</p>
             
+            <div style="background-color: #fff3e0; padding: 15px; border-left: 5px solid #ff9800; margin: 15px 0;">
+                <p style="margin: 0; font-weight: bold; color: #e65100;">Rejected By:</p>
+                <p style="margin: 5px 0 0 0;">Level ${rejectionLevel} Admin</p>
+            </div>
+
             <div style="background-color: #ffebee; padding: 15px; border-left: 5px solid #f44336; margin: 15px 0;">
                 <p style="margin: 0; font-weight: bold; color: #b71c1c;">Reason for Rejection:</p>
                 <p style="margin: 5px 0 0 0;">${reason || 'No reason provided.'}</p>
             </div>
 
-            <p>Please contact the department for more details or try a different time.</p>
+            <p>Please contact the Level ${rejectionLevel} Admin or department for more details, or try booking a different venue/time.</p>
         `
     };
 
